@@ -8,10 +8,10 @@
 #define PIN_LED_2 9                 // Another LED strip
 #define PIN_LED 13                  // Arduino default LED 
 #define NUM_PIXELS 30               // Number of pixels per LED strip
-#define NOISE 20                    // Noise/hum/interference in aux signal [10]
+#define NOISE 1                     // Noise/hum/interference in aux signal [10]
 #define DC_OFFSET 0                 // DC offset in aux signal [0]
 #define SAMPLES 60                  // Length of buffer for dynamic level adjustment [60]
-# define PEAK_FALL 20               // Rate of peak falling dot [20]
+#define PEAK_FALL 20                // Rate of peak falling dot [20]
 #define TOP (NUM_PIXELS + 2)
 
 // ------------------
@@ -21,10 +21,10 @@ int sensorValue = 0;                // Var to hold sensor value
 uint8_t volCnt = 0;                 // Frame counter for storing past volume data
 int vol[SAMPLES];                   // Collection of prior volume samples
 int val = 0;                        // 'val' is used to store the digital microphone value
-int sigMinAvg = 1024;               // For dynamic adjustment of graph low & high
-int sigMaxAvg = 0;
-int sigAvg = 0;                    //should be around 512
-int sigLvl = 0;                    // Current "dampened" audio level
+int sigMinAvg = 0;                  // For dynamic adjustment of graph low & high
+int sigMaxAvg = 1024;
+int sigAvg = 0;                     //should be around 512
+int sigLvl = 0;                     // Current "dampened" audio level
 
 
 Adafruit_NeoPixel pixels_1 = Adafruit_NeoPixel(NUM_PIXELS, PIN_LED_1, NEO_GRB + NEO_KHZ800);
@@ -64,10 +64,9 @@ void setup ()
     delay(50);
   }
   Serial.println("getting avg signal");
-  uint16_t height = (auxReading);
+  uint16_t height = auxReading();
   dropPeak();
   averageReadings();
-
 
   delay(1000);
   Serial.println("clearing strips");
@@ -85,14 +84,6 @@ void setup ()
 void loop ()
 {
   sensorValue = analogRead(APIN_MIC);
-  if (sensorValue < sigMinAvg)
-  {
-    sigMinAvg = sensorValue;
-  }
-  if (sensorValue > sigMaxAvg)
-  {
-    sigMaxAvg = sensorValue;
-  }
   val = digitalRead(DPIN_MIC);     // read value
   if (val == HIGH)    // if he value is high then light the LED or else do not light the LED
   {
@@ -104,104 +95,19 @@ void loop ()
   {
     digitalWrite (PIN_LED, LOW);
     Serial.print(sensorValue);
-    Serial.print(", LOW, ");
+    Serial.print(", LOW , ");
   }
   Serial.print(sigMinAvg);
   Serial.print(" <-> ");
   Serial.print(sigMaxAvg);
-  Serial.print(", ");
-  Serial.println(sigMaxAvg);
 
-  pixels_1.clear();
-  pixels_1.show();
-  pixels_2.clear();
-  pixels_2.show();
-  // set pixels 1
-  //menial sensor value 515
-  if (sensorValue > (sigAvg+1))
-  {
-    int amplitude = (sensorValue - sigAvg)*2.5;
-    //paintStrip(pixels_1, amplitude);
-    if (amplitude > 20)
-    {
-      for (int i = 1; i <= 20; i++)
-      {
-        pixels_1.fill(colores[0],0,i);
-        pixels_1.show();
-      }
-      if (amplitude > 25)
-      {
-        for (int j = 20; j <= 25; j++)
-        {
-          pixels_1.fill(colores[1],20,(j-19));
-          pixels_1.show();
-        }
-        for (int k = 25; k <= amplitude; k++)
-        {
-          pixels_1.fill(colores[2],25,(k-24));
-          pixels_1.show();
-        }
-      }
-      else
-      {
-        for (int j = 20; j < amplitude; j++)
-        {
-          pixels_1.fill(colores[1],20,(j-19));
-          pixels_1.show();
-        }
-      }
-    }
-    else
-    {
-      for (int i = 1; i <= amplitude; i++)
-      {
-        pixels_1.fill(colores[0],0,i);
-        pixels_1.show();
-      }
-    }      
-  }
-  else if (sensorValue < (sigAvg-1))
-  {
-    int amplitude = (sigAvg - sensorValue)*2.5;
-    //paintStrip(pixels_2, amplitude);
-    if (amplitude > 20)
-    {
-      for (int i = 1; i <= 20; i++)
-      {
-        pixels_2.fill(colores[0],0,i);
-        pixels_2.show();
-      }
-      if (amplitude > 25)
-      {
-        for (int j = 20; j <= 25; j++)
-        {
-          pixels_2.fill(colores[1],20,(j-19));
-          pixels_2.show();
-        }
-        for (int k = 25; k <= amplitude; k++)
-        {
-          pixels_2.fill(colores[2],25,(k-24));
-          pixels_2.show();
-        }
-      }
-      else
-      {
-        for (int j = 20; j < amplitude; j++)
-        {
-          pixels_2.fill(colores[1],20,(j-19));
-          pixels_2.show();
-        }
-      }
-    }
-    else
-    {
-      for (int i = 1; i < amplitude; i++)
-      {
-        pixels_2.fill(colores[0],0,i);
-        pixels_2.show();
-      }
-    }      
-  }
+  uint16_t height = auxReading();
+  Serial.print(", ");
+  Serial.print(height);
+  Serial.print(", ");
+  Serial.println(sigLvl);  
+  dropPeak();
+  averageReadings();
   //delay(500); //slow things down a little bit... no need for epilepsy
 }
 
@@ -264,12 +170,13 @@ void paintStrip(Adafruit_NeoPixel strip, int amplitude)
 // -- VU functions --
 // ------------------
 
-uint16_t auxReading(uint8_t channel) {
+uint16_t auxReading() {
 
   int n = 0;
   uint16_t height = 0;
 
   n = analogRead(APIN_MIC); // Raw reading from line in
+  //n = abs(n - 512 - DC_OFFSET); // Center on zero
   n = abs(n - 512 - DC_OFFSET); // Center on zero
   n = (n <= NOISE) ? 0 : (n - NOISE); // Remove noise/hum
   sigLvl = ((sigLvl * 7) + n) >> 3; // "Dampened" reading else looks twitchy (>>3 is divide by 8)
@@ -279,9 +186,7 @@ uint16_t auxReading(uint8_t channel) {
   height = TOP * (sigLvl - sigMinAvg) / (long)(sigMaxAvg - sigMinAvg);
 
   // Calculate bar height based on dynamic min/max levels (fixed point):
-  height = constrain(height, 0, TOP);
-  Serial.print("Analog read: ");
-  Serial.print(height);  
+  height = constrain(height, 0, TOP); 
   return height;
 }
 
@@ -321,9 +226,5 @@ void averageReadings() {
   
   sigMinAvg = (sigMinAvg * 63 + minLvl) >> 6; // Dampen min/max levels
   sigMaxAvg = (sigMaxAvg * 63 + maxLvl) >> 6; // (fake rolling average)
-
-  Serial.print("signal Min Average: ");
-  Serial.println(sigMinAvg);
-  Serial.print("signal Max Average: ");
-  Serial.println(sigMaxAvg);
+  sigAvg = (sigMaxAvg + sigMinAvg)/2;
 }
