@@ -1,14 +1,15 @@
 #include <Adafruit_NeoPixel.h>
 
-#define DPIN_MIC 3      // Arduino pin 3 = the digital output pin of the Microphone board (D0)
-#define APIN_MIC A0     // AUX input from mic
-#define PIN_LED_1 8     // One LED strip
-#define PIN_LED_2 9     // Another LED strip
-#define PIN_LED 13      // Arduino default LED 
-#define NUM_PIXELS 30   // Number of pixels per LED strip
-#define NOISE 20        // Noise/hum/interference in aux signal [10]
-#define DC_OFFSET 0     // DC offset in aux signal [0]
-#define SAMPLES 60      // Length of buffer for dynamic level adjustment [60]
+#define DPIN_MIC 3                  // Arduino pin 3 = the digital output pin of the Microphone board (D0)
+#define APIN_MIC A0                 // AUX input from mic
+#define PIN_LED_1 8                 // One LED strip
+#define PIN_LED_2 9                 // Another LED strip
+#define PIN_LED 13                  // Arduino default LED 
+#define NUM_PIXELS 30               // Number of pixels per LED strip
+#define NOISE 20                    // Noise/hum/interference in aux signal [10]
+#define DC_OFFSET 0                 // DC offset in aux signal [0]
+#define SAMPLES 60                  // Length of buffer for dynamic level adjustment [60]
+# define PEAK_FALL 20               // Rate of peak falling dot [20]
 #define TOP (NUM_PIXELS + 2)
 
 // ------------------
@@ -265,6 +266,10 @@ void paintStrip(Adafruit_NeoPixel strip, int amplitude)
 // ------------------
 // -- VU functions --
 // ------------------
+
+/*
+ * Function for averaging the sample readings
+ */
 uint16_t auxReading(uint8_t channel) {
 
   int n = 0;
@@ -282,6 +287,20 @@ uint16_t auxReading(uint8_t channel) {
   // Calculate bar height based on dynamic min/max levels (fixed point):
   height = constrain(height, 0, TOP);
   return height;
+}
+
+/*
+ * Function for dropping the peak
+ */
+uint8_t peak;
+void dropPeak(uint8_t channel) {
+  
+  static uint8_t dotCount;
+ 
+  if(++dotCount >= PEAK_FALL) { //fall rate 
+    if(peak > 0) peak--;
+    dotCount = 0;
+  }
 }
 
 /*
