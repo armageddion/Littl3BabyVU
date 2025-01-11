@@ -1,18 +1,28 @@
 #include <Adafruit_NeoPixel.h>
 
-#define PIN_LED_1 8
-#define PIN_LED_2 9
+#define DPIN_MIC 3      // Arduino pin 3 = the digital output pin of the Microphone board (D0)
+#define APIN_MIC A0     // AUX input from mic
+#define PIN_LED_1 8     // One LED strip
+#define PIN_LED_2 9     // Another LED strip
+#define PIN_LED 13      // Arduino default LED 
+#define NUM_PIXELS 30   // Number of pixels per LED strip
+#define NOISE 20        // Noise/hum/interference in aux signal [10]
+#define DC_OFFSET 0     // DC offset in aux signal [0]
+#define SAMPLES 60      // Length of buffer for dynamic level adjustment [60]
+#define TOP (NUM_PIXELS + 2)
 
-#define NUM_PIXELS 30
+// ------------------
+// -- Audio Vars --
+// ------------------
+int sensorValue = 0;                // Var to hold sensor value
+uint8_t volCnt = 0;                 // Frame counter for storing past volume data
+int vol[SAMPLES];                   // Collection of prior volume samples
+int val = 0;                        // 'val' is used to store the digital microphone value
+int sigMinAvg = 1024;               // For dynamic adjustment of graph low & high
+int sigMaxAvg = 0;
+int sigAvg = 0;                    //should be around 512
+int sigLvl = 0;                    // Current "dampened" audio level
 
-int led= 13;     // 'led' is the Arduino onboard LED
-int mic= 3;     // 'mic' is the Arduino pin 3 = the digital output pin of the Microphone board (D0)
-int val = 0;     // 'val' is used to store the digital microphone value
-const int sensorPin = A0;
-int sensorValue = 0;
-int signalMin = 1024;
-int signalMax = 0;
-int signalAvg = 0; //should be around 514
 
 Adafruit_NeoPixel pixels_1 = Adafruit_NeoPixel(NUM_PIXELS, PIN_LED_1, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel pixels_2 = Adafruit_NeoPixel(NUM_PIXELS, PIN_LED_2, NEO_GRB + NEO_KHZ800);
@@ -29,9 +39,9 @@ uint32_t black = pixels_1.Color(0, 0, 0);
 void setup ()
 {
   Serial.begin(9600);
-  pinMode(sensorPin, INPUT) ;
-  pinMode (led, OUTPUT) ;     // configure 'led' as output pin
-  pinMode (mic, INPUT) ;     // configure 'mic' as input pin
+  pinMode(APIN_MIC, INPUT) ;
+  pinMode(DPIN_MIC, INPUT) ;     // configure 'mic' as input pin
+  pinMode(PIN_LED, OUTPUT) ;     // configure 'led' as output pin
 
   pinMode(PIN_LED_1, OUTPUT);  
   pinMode(PIN_LED_2, OUTPUT);   
@@ -53,14 +63,14 @@ void setup ()
   Serial.println("getting avg signal");
   for (int i = 0; i < 20; i++)
   {
-    sensorValue = analogRead(sensorPin);
+    sensorValue = analogRead(APIN_MIC);
     Serial.println(sensorValue);
-    signalAvg += sensorValue;
+    sigAvg += sensorValue;
     delay(500);
   }
-  signalAvg = signalAvg/20;
+  sigAvg = sigAvg/20;
   Serial.print("AverageSignal = ");
-  Serial.println(signalAvg);
+  Serial.println(sigAvg);
   delay(1000);
   Serial.println("clearing strips");
   for (int i = NUM_PIXELS; i >= 0; i--)
@@ -76,33 +86,33 @@ void setup ()
  
 void loop ()
 {
-  sensorValue = analogRead(sensorPin);
-  if (sensorValue < signalMin)
+  sensorValue = analogRead(APIN_MIC);
+  if (sensorValue < sigMinAvg)
   {
-    signalMin = sensorValue;
+    sigMinAvg = sensorValue;
   }
-  if (sensorValue > signalMax)
+  if (sensorValue > sigMaxAvg)
   {
-    signalMax = sensorValue;
+    sigMaxAvg = sensorValue;
   }
-  val = digitalRead(mic);     // read value
+  val = digitalRead(DPIN_MIC);     // read value
   if (val == HIGH)    // if he value is high then light the LED or else do not light the LED
   {
-    digitalWrite (led, HIGH);
+    digitalWrite (PIN_LED, HIGH);
     Serial.print(sensorValue);
     Serial.print(", HIGH, ");
   }
   else
   {
-    digitalWrite (led, LOW);
+    digitalWrite (PIN_LED, LOW);
     Serial.print(sensorValue);
     Serial.print(", LOW, ");
   }
-  Serial.print(signalMin);
+  Serial.print(sigMinAvg);
   Serial.print(" <-> ");
-  Serial.print(signalMax);
+  Serial.print(sigMaxAvg);
   Serial.print(", ");
-  Serial.println(signalAvg);
+  Serial.println(sigMaxAvg);
 
   pixels_1.clear();
   pixels_1.show();
@@ -110,9 +120,9 @@ void loop ()
   pixels_2.show();
   // set pixels 1
   //menial sensor value 515
-  if (sensorValue > (signalAvg+1))
+  if (sensorValue > (sigAvg+1))
   {
-    int amplitude = (sensorValue - signalAvg)*2.5;
+    int amplitude = (sensorValue - sigAvg)*2.5;
     //paintStrip(pixels_1, amplitude);
     if (amplitude > 20)
     {
@@ -152,9 +162,9 @@ void loop ()
       }
     }      
   }
-  else if (sensorValue < (signalAvg-1))
+  else if (sensorValue < (sigAvg-1))
   {
-    int amplitude = (signalAvg - sensorValue)*2.5;
+    int amplitude = (sigAvg - sensorValue)*2.5;
     //paintStrip(pixels_2, amplitude);
     if (amplitude > 20)
     {
@@ -250,4 +260,50 @@ void paintStrip(Adafruit_NeoPixel strip, int amplitude)
     }
   }
   return;
+}
+
+// ------------------
+// -- VU functions --
+// ------------------
+uint16_t auxReading(uint8_t channel) {
+
+  int n = 0;
+  uint16_t height = 0;
+
+  n = analogRead(APIN_MIC); // Raw reading from line in
+  n = abs(n - 512 - DC_OFFSET); // Center on zero
+  n = (n <= NOISE) ? 0 : (n - NOISE); // Remove noise/hum
+  sigLvl = ((sigLvl * 7) + n) >> 3; // "Dampened" reading else looks twitchy (>>3 is divide by 8)
+  vol[volCnt] = n; // Save sample for dynamic leveling
+  volCnt = ++volCnt % SAMPLES;
+  // Calculate bar height based on dynamic min/max levels (fixed point):
+  height = TOP * (sigLvl - sigMinAvg) / (long)(sigMaxAvg - sigMinAvg);
+
+  // Calculate bar height based on dynamic min/max levels (fixed point):
+  height = constrain(height, 0, TOP);
+  return height;
+}
+
+/*
+ * Function for averaging the sample readings
+ */
+void averageReadings() {
+
+  uint16_t minLvl, maxLvl;
+
+  // minLvl and maxLvl indicate the volume range over prior frames, used
+  // for vertically scaling the output graph (so it looks interesting
+  // regardless of volume level).  If they're too close together though
+  // (e.g. at very low volume levels) the graph becomes super coarse
+  // and 'jumpy'...so keep some minimum distance between them (this
+  // also lets the graph go to zero when no sound is playing):
+  minLvl = maxLvl = vol[0];
+  for (int i = 1; i < SAMPLES; i++) {
+    if (vol[i] < minLvl) minLvl = vol[i];
+    else if (vol[i] > maxLvl) maxLvl = vol[i];
+  }
+  if ((maxLvl - minLvl) < TOP) maxLvl = minLvl + TOP;
+  
+  sigMinAvg = (sigMinAvg * 63 + minLvl) >> 6; // Dampen min/max levels
+  sigMaxAvg = (sigMaxAvg * 63 + maxLvl) >> 6; // (fake rolling average)
 }
