@@ -1,4 +1,6 @@
 #include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
+#include <EEPROM.h>
 
 #define DPIN_MIC 3                  // Arduino pin 3 = the digital output pin of the Microphone board (D0)
 #define APIN_MIC A0                 // AUX input from mic
@@ -62,16 +64,11 @@ void setup ()
     delay(50);
   }
   Serial.println("getting avg signal");
-  for (int i = 0; i < 20; i++)
-  {
-    sensorValue = analogRead(APIN_MIC);
-    Serial.println(sensorValue);
-    sigAvg += sensorValue;
-    delay(500);
-  }
-  sigAvg = sigAvg/20;
-  Serial.print("AverageSignal = ");
-  Serial.println(sigAvg);
+  uint16_t height = (auxReading);
+  dropPeak();
+  averageReadings();
+
+
   delay(1000);
   Serial.println("clearing strips");
   for (int i = NUM_PIXELS; i >= 0; i--)
@@ -267,9 +264,6 @@ void paintStrip(Adafruit_NeoPixel strip, int amplitude)
 // -- VU functions --
 // ------------------
 
-/*
- * Function for averaging the sample readings
- */
 uint16_t auxReading(uint8_t channel) {
 
   int n = 0;
@@ -286,6 +280,8 @@ uint16_t auxReading(uint8_t channel) {
 
   // Calculate bar height based on dynamic min/max levels (fixed point):
   height = constrain(height, 0, TOP);
+  Serial.print("Analog read: ");
+  Serial.print(height);  
   return height;
 }
 
@@ -293,7 +289,7 @@ uint16_t auxReading(uint8_t channel) {
  * Function for dropping the peak
  */
 uint8_t peak;
-void dropPeak(uint8_t channel) {
+void dropPeak() {
   
   static uint8_t dotCount;
  
@@ -325,4 +321,9 @@ void averageReadings() {
   
   sigMinAvg = (sigMinAvg * 63 + minLvl) >> 6; // Dampen min/max levels
   sigMaxAvg = (sigMaxAvg * 63 + maxLvl) >> 6; // (fake rolling average)
+
+  Serial.print("signal Min Average: ");
+  Serial.println(sigMinAvg);
+  Serial.print("signal Max Average: ");
+  Serial.println(sigMaxAvg);
 }
