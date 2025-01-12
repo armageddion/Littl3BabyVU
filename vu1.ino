@@ -4,7 +4,6 @@
 
 void vu1() {
   
-  CRGB* leds;
   uint8_t i = 0;
   uint8_t *peak;      // Pointer variable declaration
   uint16_t height = auxReading();
