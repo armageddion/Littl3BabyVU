@@ -36,19 +36,19 @@ Adafruit_NeoPixel pixels_2 = Adafruit_NeoPixel(NUM_PIXELS, PIN_LED_2, NEO_GRB + 
 
 // CUSTOM COLORS
 const uint32_t colores[] = {
-  pixels_1.Color(255, 0, 255),   //pink
-  pixels_1.Color(29, 219, 191),  //light blue
-  pixels_1.Color(255, 0, 0),  //red
-  pixels_1.Color(49, 245, 96)   //mostly green
+  pixels_1.Color(255, 0, 255),       //pink
+  pixels_1.Color(29, 219, 191),      //light blue
+  pixels_1.Color(255, 0, 0),         //red
+  pixels_1.Color(49, 245, 96)        //mostly green
 };
 uint32_t black = pixels_1.Color(0, 0, 0);
 
 void setup ()
 {
   Serial.begin(9600);
-  pinMode(APIN_MIC, INPUT) ;
-  pinMode(DPIN_MIC, INPUT) ;     // configure 'mic' as input pin
-  pinMode(PIN_LED, OUTPUT) ;     // configure 'led' as output pin
+  pinMode(APIN_MIC, INPUT) ;         // configure analog 'mic' as input pin
+  pinMode(DPIN_MIC, INPUT) ;         // configure digital 'mic' as input pin
+  pinMode(PIN_LED, OUTPUT) ;         // configure 'led' as output pin
 
   pinMode(PIN_LED_1, OUTPUT);  
   pinMode(PIN_LED_2, OUTPUT);   
@@ -189,11 +189,16 @@ uint16_t auxReading() {
   volCnt = ++volCnt % SAMPLES;
 
   n = abs(n - sigAvg - DC_OFFSET); // Center on zero
+  Serial.println("");
+  Serial.print("auxReading: ");
+  Serial.println(n);
   n = (n <= NOISE) ? 0 : (n - NOISE); // Remove noise/hum
   sigLvl = ((sigLvl * 7) + n) >> 3; // "Dampened" reading else looks twitchy (>>3 is divide by 8)
+  Serial.println(sigLvl);
   // Calculate bar height based on dynamic min/max levels (fixed point):
-  height = TOP * (sigLvl - sigMinAvg) / (long)(sigMaxAvg - sigMinAvg);
-
+  //height = TOP * (sigLvl - sigMinAvg) / (long)(sigMaxAvg - sigMinAvg);
+  height = TOP * n / (long)(sigMaxAvg - sigMinAvg);
+  Serial.println(height);
   // Calculate bar height based on dynamic min/max levels (fixed point):
   height = constrain(height, 0, TOP); 
   return height;
